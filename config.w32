@@ -1,0 +1,8 @@
+// $ Id: $
+// vim:ft=javascript
+
+ARG_ENABLE('bloomy' , 'The unknown extension', 'no');
+if (PHP_BLOOMY == "yes") {
+  EXTENSION("bloomy", "bloomy.c");
+  AC_DEFINE("HAVE_BLOOMY", 1, "bloomy support");
+}
