@@ -19,30 +19,45 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include "php.h"
 
-#define BITS_PER_CHAR 8
-#define MAX_HASHES    50
+#define BITS_PER_CHAR   8
+#define BITS_CHAR_SHIFT 3
+#define MAX_HASHES      50
 
-struct _filter_spec_t {
-	size_t filter_size;
-	uint8_t num_hashes;
-};
+void hashword2 (
+		const uint32_t *k,                   /* the key, an array of uint32_t values */
+		size_t          length,               /* the length of the key, in uint32_ts */
+		uint32_t       *pc,                      /* IN: seed OUT: primary hash value */
+		uint32_t       *pb);              /* IN: more seed OUT: secondary hash value */
+void hashlittle2( 
+  const void *key,       /* the key to hash */
+  size_t      length,    /* length of the key */
+  uint32_t   *pc,        /* IN: primary initval, OUT: primary hash */
+  uint32_t   *pb);       /* IN: secondary initval, OUT: secondary hash */
 
-struct _bloom_t {
-	uint8_t  *filter;
-	struct _filter_spec_t spec;
-
-	double    max_error_rate;
-	size_t    num_elements;
-
-	uint32_t  salt1;
-	uint32_t  salt2;
-};
-
-static void bloom_calc_salts(bloom_t *bloom)
+static void bloom_gen_salts(bloom_t *bloom)
 {
-	if (!bloom) {
-		return;
+	int i, num_salts = 2;
+	uint32_t salt;
+	uint32_t* salts[2] = { &bloom->salt1, &bloom->salt2 };
+
+	for (i = 0; i < num_salts; i++) {
+		salt = ((uint32_t)rand() ^ (uint32_t)rand());
+		if (salt == 0) continue;
+		*salts[i] = salt;
+	}
+}
+
+static void bloom_hash(bloom_t *bloom, const char *data, size_t data_len, uint32_t *hash1, uint32_t *hash2)
+{
+	*hash1 = bloom->salt1;
+	*hash2 = bloom->salt2;
+
+	if ((data_len & 0x3) == 0) {
+		hashword2((uint32_t *)data, data_len / 4, hash1, hash2);
+	} else {
+		hashlittle2((void *)data, data_len, hash1, hash2);
 	}
 }
 
@@ -70,9 +85,12 @@ bloom_return bloom_init(bloom_t *bloom, size_t num_elements, double max_error_ra
 		return status;
 	}
 
-	bloom->filter = (uint8_t *)ecalloc(spec.filter_size / BITS_PER_CHAR, sizeof(uint8_t));
+	bloom->filter = (uint8_t *)safe_emalloc(spec.filter_size / BITS_PER_CHAR, sizeof(uint8_t), 0);
+	memset(bloom->filter, 0, spec.filter_size / BITS_PER_CHAR * sizeof(uint8_t));
 	bloom->spec   = spec;
 	bloom->max_error_rate = max_error_rate;
+
+	bloom_gen_salts(bloom);
 
 	return BLOOM_SUCCESS;
 }
@@ -80,18 +98,54 @@ bloom_return bloom_init(bloom_t *bloom, size_t num_elements, double max_error_ra
 void bloom_clean(bloom_t *bloom)
 {
 	if (!bloom) {
-		return BLOOM_BADARG;
+		return;
 	}
 
-	efree(bloom->filter);
+	if (bloom->filter) {
+		efree(bloom->filter);
+	}
 }
 
 bloom_return bloom_add(bloom_t *bloom, const char *data, size_t data_len)
 {
+	int i;
+	uint32_t hash1, hash2;
+	uint32_t index;
+
+	if (!bloom || !data || data_len == 0) {
+		return BLOOM_BADARG;
+	}
+
+	bloom_hash(bloom, data, data_len, &hash1, &hash2);
+	for (i = 0; i < bloom->spec.num_hashes; i++) {
+		index = (hash1 + i * hash2) % bloom->spec.filter_size;
+		bloom->filter[index >> BITS_CHAR_SHIFT] |= 1 << (index % BITS_PER_CHAR);
+	}
+
+	bloom->num_elements++;
+
+	return BLOOM_SUCCESS;
 }
 
 bloom_return bloom_contains(bloom_t *bloom, const char *data, size_t data_len)
 {
+	int i;
+	uint32_t hash1, hash2;
+	uint32_t index;
+
+	if (!bloom || !data || data_len == 0) {
+		return BLOOM_BADARG;
+	}
+
+	bloom_hash(bloom, data, data_len, &hash1, &hash2);
+	for (i = 0; i < bloom->spec.num_hashes; i++) {
+		index = (hash1 + i * hash2) % bloom->spec.filter_size;
+		if ((bloom->filter[index >> BITS_CHAR_SHIFT] & (1 << (index % BITS_PER_CHAR))) == 0) {
+			return BLOOM_NOTFOUND;
+		}
+	}
+
+	return BLOOM_SUCCESS;
 }
 
 bloom_return bloom_calc_optimal(filter_spec_t *spec, size_t num_elements, double max_error_rate)
@@ -124,15 +178,8 @@ bloom_return bloom_calc_optimal(filter_spec_t *spec, size_t num_elements, double
 
 	spec->filter_size = filter_size;
 	spec->num_hashes  = num_hashes;
+	spec->size_bytes  = filter_size / BITS_PER_CHAR;
 
 	return BLOOM_SUCCESS;
 }
 
-int main()
-{
-	filter_spec_t spec;
-
-	bloom_calc_optimal(&spec, 1000000, 0.01);
-	printf("filter size = %d\nhashes = %d\n", spec.filter_size, spec.num_hashes);
-	return 0;
-}

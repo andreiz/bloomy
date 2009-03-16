@@ -23,7 +23,7 @@ if test "$PHP_BLOOMY" != "no"; then
   PHP_SUBST(BLOOMY_SHARED_LIBADD)
   AC_DEFINE(HAVE_BLOOMY, 1, [ ])
 
-  PHP_NEW_EXTENSION(bloomy, php_bloomy.c bloom.c, $ext_shared)
+  PHP_NEW_EXTENSION(bloomy, php_bloomy.c bloom.c lookup3.c, $ext_shared)
 
 fi
 

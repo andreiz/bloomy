@@ -20,13 +20,28 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-typedef struct _bloom_t bloom_t;
-typedef struct _filter_spec_t filter_spec_t;
+typedef struct _filter_spec_t {
+	size_t filter_size;
+	size_t size_bytes;
+	uint8_t num_hashes;
+} filter_spec_t;
+
+typedef struct _bloom_t {
+	uint8_t  *filter;
+	struct _filter_spec_t spec;
+
+	double max_error_rate;
+	size_t num_elements;
+
+	uint32_t  salt1;
+	uint32_t  salt2;
+} bloom_t;
 
 typedef enum {
 	BLOOM_SUCCESS,
 	BLOOM_FAILURE,
 	BLOOM_BADARG,
+	BLOOM_NOTFOUND,
 	BLOOM_BAD_FILTER_SIZE
 } bloom_return;
 
