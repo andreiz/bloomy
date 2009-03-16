@@ -18,27 +18,18 @@
 
 #include "php_bloomy.h"
 
-#if HAVE_BLOOMY
-
-/* {{{ bloomy_functions[] */
-function_entry bloomy_functions[] = {
-	{ NULL, NULL, NULL }
-};
-/* }}} */
-
-
 /* {{{ bloomy_module_entry
  */
 zend_module_entry bloomy_module_entry = {
 	STANDARD_MODULE_HEADER,
 	"bloomy",
-	bloomy_functions,
-	PHP_MINIT(bloomy),     /* Replace with NULL if there is nothing to do at php startup   */ 
-	PHP_MSHUTDOWN(bloomy), /* Replace with NULL if there is nothing to do at php shutdown  */
-	PHP_RINIT(bloomy),     /* Replace with NULL if there is nothing to do at request start */
-	PHP_RSHUTDOWN(bloomy), /* Replace with NULL if there is nothing to do at request end   */
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
 	PHP_MINFO(bloomy),
-	"0.0.1dev", 
+	PHP_BLOOMY_VERSION, 
 	STANDARD_MODULE_PROPERTIES
 };
 /* }}} */
@@ -48,61 +39,15 @@ ZEND_GET_MODULE(bloomy)
 #endif
 
 
-/* {{{ PHP_MINIT_FUNCTION */
-PHP_MINIT_FUNCTION(bloomy)
-{
-
-	/* add your stuff here */
-
-	return SUCCESS;
-}
-/* }}} */
-
-
-/* {{{ PHP_MSHUTDOWN_FUNCTION */
-PHP_MSHUTDOWN_FUNCTION(bloomy)
-{
-
-	/* add your stuff here */
-
-	return SUCCESS;
-}
-/* }}} */
-
-
-/* {{{ PHP_RINIT_FUNCTION */
-PHP_RINIT_FUNCTION(bloomy)
-{
-	/* add your stuff here */
-
-	return SUCCESS;
-}
-/* }}} */
-
-
-/* {{{ PHP_RSHUTDOWN_FUNCTION */
-PHP_RSHUTDOWN_FUNCTION(bloomy)
-{
-	/* add your stuff here */
-
-	return SUCCESS;
-}
-/* }}} */
-
-
 /* {{{ PHP_MINFO_FUNCTION */
 PHP_MINFO_FUNCTION(bloomy)
 {
-	php_info_print_box_start(0);
-	php_printf("<p>The unknown extension</p>\n");
-	php_printf("<p>Version 0.0.1devdevel (2009-03-16)</p>\n");
-	php_info_print_box_end();
-	/* add your stuff here */
-
+	php_info_print_table_start();
+	php_info_print_table_header(2, "bloomy support", "enabled");
+	php_info_print_table_row(2, "Version", PHP_BLOOMY_VERSION);
+	php_info_print_table_end();
 }
 /* }}} */
-
-#endif /* HAVE_BLOOMY */
 
 
 /*

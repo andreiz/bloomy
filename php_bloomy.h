@@ -19,28 +19,12 @@
 #ifndef PHP_BLOOMY_H
 #define PHP_BLOOMY_H
 
-#ifdef  __cplusplus
-extern "C" {
-#endif
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 #include <php.h>
-
-#ifdef HAVE_BLOOMY
-
-#include <php_ini.h>
-#include <SAPI.h>
 #include <ext/standard/info.h>
-#include <Zend/zend_extensions.h>
-#ifdef  __cplusplus
-} // extern "C" 
-#endif
-#ifdef  __cplusplus
-extern "C" {
-#endif
 
 extern zend_module_entry bloomy_module_entry;
 #define phpext_bloomy_ptr &bloomy_module_entry
@@ -51,17 +35,9 @@ extern zend_module_entry bloomy_module_entry;
 #define PHP_BLOOMY_API
 #endif
 
-PHP_MINIT_FUNCTION(bloomy);
-PHP_MSHUTDOWN_FUNCTION(bloomy);
-PHP_RINIT_FUNCTION(bloomy);
-PHP_RSHUTDOWN_FUNCTION(bloomy);
-PHP_MINFO_FUNCTION(bloomy);
-
 #ifdef ZTS
 #include "TSRM.h"
 #endif
-
-#define FREE_RESOURCE(resource) zend_list_delete(Z_LVAL_P(resource))
 
 #define PROP_GET_LONG(name)    Z_LVAL_P(zend_read_property(_this_ce, _this_zval, #name, strlen(#name), 1 TSRMLS_CC))
 #define PROP_SET_LONG(name, l) zend_update_property_long(_this_ce, _this_zval, #name, strlen(#name), l TSRMLS_CC)
@@ -74,12 +50,9 @@ PHP_MINFO_FUNCTION(bloomy);
 #define PROP_SET_STRING(name, s) zend_update_property_string(_this_ce, _this_zval, #name, strlen(#name), s TSRMLS_CC)
 #define PROP_SET_STRINGL(name, s, l) zend_update_property_stringl(_this_ce, _this_zval, #name, strlen(#name), s, l TSRMLS_CC)
 
+#define PHP_BLOOMY_VERSION "0.1.0"
 
-#ifdef  __cplusplus
-} // extern "C" 
-#endif
-
-#endif /* PHP_HAVE_BLOOMY */
+PHP_MINFO_FUNCTION(bloomy);
 
 #endif /* PHP_BLOOMY_H */
 
