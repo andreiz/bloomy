@@ -102,8 +102,6 @@ static PHP_METHOD(BloomFilter, __construct)
 		return;
 	}
 
-	zend_update_property_double(bloom_ce, object, ZEND_STRL("errorRate"), error_rate TSRMLS_CC);
-	zend_update_property_long(bloom_ce, object, ZEND_STRL("sizeInBytes"), obj->bloom->spec.size_bytes TSRMLS_CC);
 }
 /* }}} */
 
@@ -152,6 +150,26 @@ static PHP_METHOD(BloomFilter, has)
 	} else {
 		RETURN_TRUE;
 	}
+}
+/* }}} */
+
+/* {{{ BloomFilter::getInfo */
+static PHP_METHOD(BloomFilter, getInfo)
+{
+	BLOOM_METHOD_INIT_VARS;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
+		return;
+	}
+
+	BLOOM_METHOD_FETCH_OBJECT;
+
+	array_init(return_value);
+	add_assoc_double_ex(return_value, ZEND_STRS("error_rate"), obj->bloom->max_error_rate);
+	add_assoc_long_ex(return_value, ZEND_STRS("num_hashes"), obj->bloom->spec.num_hashes);
+	add_assoc_long_ex(return_value, ZEND_STRS("filter_size"), obj->bloom->spec.filter_size);
+	add_assoc_long_ex(return_value, ZEND_STRS("filter_size_in_bytes"), obj->bloom->spec.size_bytes);
+	add_assoc_long_ex(return_value, ZEND_STRS("num_items"), obj->bloom->num_elements);
 }
 /* }}} */
 
@@ -208,6 +226,9 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO(arginfo_has, 0)
 	ZEND_ARG_INFO(0, data)
 ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO(arginfo_getInfo, 0)
+ZEND_END_ARG_INFO()
 /* }}} */
 
 /* {{{ bloom_class_methods */
@@ -215,6 +236,8 @@ static zend_function_entry bloom_class_methods[] = {
     PHP_ME(BloomFilter, __construct,        arginfo___construct, ZEND_ACC_PUBLIC)
     PHP_ME(BloomFilter, add,                arginfo_add,         ZEND_ACC_PUBLIC)
     PHP_ME(BloomFilter, has,                arginfo_has,         ZEND_ACC_PUBLIC)
+
+    PHP_ME(BloomFilter, getInfo,           arginfo_getInfo,    ZEND_ACC_PUBLIC)
     { NULL, NULL, NULL }
 };
 /* }}} */
@@ -243,10 +266,6 @@ PHP_MINIT_FUNCTION(bloomy)
 	INIT_CLASS_ENTRY(ce, "BloomFilter", bloom_class_methods);
 	bloom_ce = zend_register_internal_class(&ce TSRMLS_CC);
 	bloom_ce->create_object = php_bloom_new;
-
-	zend_declare_property_double(bloom_ce, "errorRate", sizeof("errorRate")-1, 0.0, ZEND_ACC_PUBLIC TSRMLS_CC);
-	zend_declare_property_long(bloom_ce,   "sizeInBytes", sizeof("sizeInBytes")-1, 0, ZEND_ACC_PUBLIC TSRMLS_CC);
-	zend_declare_property_long(bloom_ce,   "numElements", sizeof("numElements")-1, 0.0, ZEND_ACC_PUBLIC TSRMLS_CC);
 
 	return SUCCESS;
 }
