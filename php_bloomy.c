@@ -56,14 +56,14 @@ static const double DEFAULT_ERROR_RATE = 0.01;
   Forward declarations
 ****************************************/
 
-static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC);
 
 
 /****************************************
   Method implementations
 ****************************************/
 
-/* {{{ BloomFilter::__construct */
+/* {{{ BloomFilter::__construct(int capacity [, double error_rate [, int random_seed ] ])
+   Creates a new filter with the specified capacity */
 static PHP_METHOD(BloomFilter, __construct)
 {
 	zval *object = getThis();
@@ -105,7 +105,8 @@ static PHP_METHOD(BloomFilter, __construct)
 }
 /* }}} */
 
-/* {{{ BloomFilter::add */
+/* {{{ BloomFilter::add(string item)
+   Adds an item to the filter */
 static PHP_METHOD(BloomFilter, add)
 {
 	char *data = NULL;
@@ -129,7 +130,8 @@ static PHP_METHOD(BloomFilter, add)
 }
 /* }}} */
 
-/* {{{ BloomFilter::has */
+/* {{{ BloomFilter::has(string item)
+   Checks if the filter has the specified item */
 static PHP_METHOD(BloomFilter, has)
 {
 	char *data = NULL;
@@ -153,7 +155,8 @@ static PHP_METHOD(BloomFilter, has)
 }
 /* }}} */
 
-/* {{{ BloomFilter::getInfo */
+/* {{{ BloomFilter::getInfo()
+   Returns array with filter information */
 static PHP_METHOD(BloomFilter, getInfo)
 {
 	BLOOM_METHOD_INIT_VARS;
