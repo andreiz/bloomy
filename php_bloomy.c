@@ -14,13 +14,15 @@
   +----------------------------------------------------------------------+
 */
 
-/* $ Id: $ */ 
+/* $ Id: $ */
 
 #include "php_bloomy.h"
 #include "bloom.h"
 
 #include "ext/standard/php_lcg.h"
 #include "ext/standard/php_rand.h"
+#include "ext/standard/php_smart_str.h"
+#include "ext/standard/php_var.h"
 
 /****************************************
   Helper macros
@@ -56,6 +58,7 @@ static const double DEFAULT_ERROR_RATE = 0.01;
   Forward declarations
 ****************************************/
 
+static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC);
 
 
 /****************************************
@@ -216,6 +219,137 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
 }
 /* }}} */
 
+/* {{{ internal API functions */
+int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len,
+						zend_serialize_data *data TSRMLS_DC)
+{
+	zval value, *value_p = &value;
+	smart_str buf = { 0 };
+	php_serialize_data_t *var_hash = (php_serialize_data_t *)data;
+	php_bloom_t *obj = (php_bloom_t *) zend_object_store_get_object(object TSRMLS_CC);
+
+	smart_str_appendl(&buf, "p:", 2);
+	smart_str_append_unsigned(&buf, obj->bloom->spec.filter_size);
+	smart_str_appendc(&buf, ',');
+	smart_str_append_unsigned(&buf, obj->bloom->spec.size_bytes);
+	smart_str_appendc(&buf, ',');
+	smart_str_append_unsigned(&buf, obj->bloom->spec.num_hashes);
+	smart_str_appendc(&buf, ',');
+	smart_str_append_unsigned(&buf, obj->bloom->num_elements);
+	smart_str_appendc(&buf, ',');
+	smart_str_append_unsigned(&buf, obj->bloom->salt1);
+	smart_str_appendc(&buf, ',');
+	smart_str_append_unsigned(&buf, obj->bloom->salt2);
+	smart_str_appendc(&buf, ';');
+
+	INIT_PZVAL(&value);
+	ZVAL_DOUBLE(&value, obj->bloom->max_error_rate);
+	php_var_serialize(&buf, &value_p, var_hash TSRMLS_CC);
+
+	ZVAL_STRINGL(&value, (char*)obj->bloom->filter, obj->bloom->spec.size_bytes, 0);
+	php_var_serialize(&buf, &value_p, var_hash TSRMLS_CC);
+
+	*buffer = (unsigned char*)estrndup(buf.c, buf.len);
+	*buf_len = buf.len;
+	efree(buf.c);
+
+	return SUCCESS;
+}
+
+int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned char *buf,
+						  zend_uint buf_len, zend_unserialize_data *data TSRMLS_DC)
+{
+#define PARSE_NEXT_NUM() \
+	num = (size_t)strtol((const char *)p, &e, 10); \
+	if (num == 0 || errno == ERANGE || (*e != ',' && *e != ';') || (e+1 >= (char *)buf_end)) { \
+		goto err_cleanup; \
+	} \
+	p = (const unsigned char *)++e;
+
+	const unsigned char *p, *buf_end;
+	char *e;
+	long num;
+	zval *value = NULL;
+	php_bloom_t *obj;
+	php_unserialize_data_t *var_hash = (php_unserialize_data_t *)data;
+
+	object_init_ex(*object, ce);
+	obj = (php_bloom_t *) zend_object_store_get_object(*object TSRMLS_CC);
+
+	p = buf;
+	buf_end = buf + buf_len;
+
+	obj->bloom = (bloom_t *) emalloc(sizeof(bloom_t));
+	memset(obj->bloom, 0, sizeof(php_bloom_t));
+
+	if (*p != 'p' || *++p != ':') {
+		goto err_cleanup;
+	}
+	++p;
+
+	PARSE_NEXT_NUM();
+	obj->bloom->spec.filter_size = (size_t)num;
+
+	PARSE_NEXT_NUM();
+	obj->bloom->spec.size_bytes = (size_t)num;
+
+	PARSE_NEXT_NUM();
+	if (num > UCHAR_MAX) {
+		goto err_cleanup;
+	}
+	obj->bloom->spec.num_hashes = (uint8_t)num;
+
+	PARSE_NEXT_NUM();
+	obj->bloom->num_elements = (size_t)num;
+
+	PARSE_NEXT_NUM();
+	obj->bloom->salt1 = (size_t)num;
+
+	PARSE_NEXT_NUM();
+	obj->bloom->salt2 = (size_t)num;
+
+	ALLOC_INIT_ZVAL(value);
+
+	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+			|| Z_TYPE_P(value) != IS_DOUBLE) {
+		zval_ptr_dtor(&value);
+		goto err_cleanup;
+	}
+
+	--p; /* for ':' */
+	obj->bloom->max_error_rate = Z_DVAL_P(value);
+	if (*p != ';') {
+		goto err_cleanup;
+	}
+
+	++p;
+	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+			|| Z_TYPE_P(value) != IS_STRING
+			|| Z_STRLEN_P(value) != obj->bloom->spec.size_bytes) {
+		zval_ptr_dtor(&value);
+		goto err_cleanup;
+	}
+
+	/*
+	 * To avoid unnecessarily copying the string, we just point the filter to the
+	 * unserialized string and simply free the zval container instead of destroying it
+	 * with zval_ptr_dtor().
+	 */
+	obj->bloom->filter = (uint8_t *)Z_STRVAL_P(value);
+	FREE_ZVAL(value);
+
+	return SUCCESS;
+
+err_cleanup:
+	if (value) {
+		zval_ptr_dtor(&value);
+	}
+
+	return FAILURE;
+#undef PARSE_NEXT_NUM
+}
+/* }}} */
+
 /* {{{ methods arginfo */
 ZEND_BEGIN_ARG_INFO_EX(arginfo___construct, 0, 0, 1)
 	ZEND_ARG_INFO(0, capacity)
@@ -256,7 +390,7 @@ zend_module_entry bloomy_module_entry = {
 	NULL,
 	NULL,
 	PHP_MINFO(bloomy),
-	PHP_BLOOMY_VERSION, 
+	PHP_BLOOMY_VERSION,
 	STANDARD_MODULE_PROPERTIES
 };
 /* }}} */
@@ -269,6 +403,8 @@ PHP_MINIT_FUNCTION(bloomy)
 	INIT_CLASS_ENTRY(ce, "BloomFilter", bloom_class_methods);
 	bloom_ce = zend_register_internal_class(&ce TSRMLS_CC);
 	bloom_ce->create_object = php_bloom_new;
+	bloom_ce->serialize     = php_bloom_serialize;
+	bloom_ce->unserialize   = php_bloom_unserialize;
 
 	return SUCCESS;
 }
