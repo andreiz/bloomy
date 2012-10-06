@@ -764,7 +764,7 @@ uint32_t hashbig( const void *key, size_t length, uint32_t initval)
 }
 
 
-#ifdef SELF_TEST
+#if SELF_TEST
 
 /* used for timings */
 void driver1()
