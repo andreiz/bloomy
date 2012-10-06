@@ -213,7 +213,7 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
 #if PHP_VERSION_ID < 50399
     zend_hash_copy(obj->zo.properties, &ce->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
 #else
-    object_properties_init(&(obj->std), class_type);
+    object_properties_init(&(obj->zo), ce);
 #endif
 
     retval.handle = zend_objects_store_put(obj, (zend_objects_store_dtor_t)zend_objects_destroy_object, (zend_objects_free_object_storage_t)php_bloom_free_storage, NULL TSRMLS_CC);
