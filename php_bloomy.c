@@ -246,10 +246,10 @@ int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len
 	smart_str_append_unsigned(&buf, obj->bloom->salt2);
 	smart_str_appendc(&buf, ';');
 
-	if (var_hash != NULL) {
+	#if PHP_VERSION_ID > 50399
 		var_hash = emalloc(sizeof(php_serialize_data_t));
 		PHP_VAR_SERIALIZE_INIT(*var_hash);
-	}
+	#endif
 
 	INIT_PZVAL(&value);
 	ZVAL_DOUBLE(&value, obj->bloom->max_error_rate);
@@ -261,6 +261,10 @@ int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len
 	*buffer = (unsigned char*)estrndup(buf.c, buf.len);
 	*buf_len = buf.len;
 	efree(buf.c);
+
+	#if PHP_VERSION_ID > 50399
+		PHP_VAR_SERIALIZE_DESTROY(*var_hash);
+	#endif
 
 	return SUCCESS;
 }
