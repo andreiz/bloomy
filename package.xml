@@ -57,6 +57,12 @@ http://pear.php.net/dtd/package-2.0.xsd">
    <file role='src' name='lookup3.c'/>
    <file role='src' name='php_bloomy.h'/>
    <file role='src' name='php_bloomy.c'/>
+   <dir name="tests">
+    <file name="001.phpt" role="test" />
+    <file name="add.phpt" role="test" />
+    <file name="construct.phpt" role="test" />
+    <file name="has.phpt" role="test" />         
+   </dir>
   </dir>
  </contents>
 
