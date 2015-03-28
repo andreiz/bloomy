@@ -59,8 +59,6 @@ static const double DEFAULT_ERROR_RATE = 0.01;
 
 static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC);
 
-
-
 #ifdef ZEND_ENGINE_3 
 static inline php_bloom_t *php_bloom_fetch_object(zend_object *obj) {
 	return (php_bloom_t *)((char*)(obj) - XtOffsetOf(php_bloom_t, zo));
@@ -70,7 +68,6 @@ static inline php_bloom_t *php_bloom_fetch_object(zend_object *obj) {
 #define php_bloom_fetch_object(object) ((php_bloom_t *)object)
 #define Z_BLOOM_P(zv) (php_bloom_t *)zend_object_store_get_object(zv TSRMLS_CC)
 #endif
-
 
 
 /****************************************
@@ -238,13 +235,14 @@ static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC)
 }
 
 //static void php_bloom_free_storage(php_bloom_t *obj TSRMLS_DC)
-static void php_bloom_free_storage(BLOOM_ZEND_OBJECT *object TSRMLS_DC)
+#ifdef ZEND_ENGINE_3
+	static void php_bloom_free_storage(zend_object *object TSRMLS_DC)
+#else 
+static void php_bloom_free_storage(php_bloom_t *object TSRMLS_DC)
+#endif
 {
-
 	php_bloom_t *obj = php_bloom_fetch_object(object);
-
 	zend_object_std_dtor(&obj->zo TSRMLS_CC);
-
 	php_bloom_destroy(obj TSRMLS_CC);
 
 #ifndef ZEND_ENGINE_3
@@ -342,20 +340,13 @@ int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len
 
 #ifdef ZEND_ENGINE_3
 	ZVAL_STRINGL(&value, (char*)obj->bloom->filter, obj->bloom->spec.size_bytes);
-#else
-	ZVAL_STRINGL(&value, (char*)obj->bloom->filter, obj->bloom->spec.size_bytes, 0);
-#endif
-#ifdef ZEND_ENGINE_3
 	php_var_serialize(&buf, &value, var_hash TSRMLS_CC);
-#else
-	php_var_serialize(&buf, &value_p, var_hash TSRMLS_CC);
-#endif
-
-#ifdef ZEND_ENGINE_3
 	*buffer = (unsigned char *) estrndup(buf.s->val, buf.s->len);
 	*buf_len = buf.s->len;
 	zend_string_release(buf.s);
 #else
+	ZVAL_STRINGL(&value, (char*)obj->bloom->filter, obj->bloom->spec.size_bytes, 0);
+	php_var_serialize(&buf, &value_p, var_hash TSRMLS_CC);
 	*buffer = (unsigned char*)estrndup(buf.c, buf.len);
 	*buf_len = buf.len;
 	efree(buf.c);
@@ -434,13 +425,11 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 
 #ifdef ZEND_ENGINE_3
 	if (!php_var_unserialize(value, &p, buf_end, var_hash TSRMLS_CC)
-#else
-	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
-#endif
-			|| Z_TYPE_P(value) != IS_DOUBLE) {
-#ifdef ZEND_ENGINE_3
+		|| Z_TYPE_P(value) != IS_DOUBLE) {
 		zval_ptr_dtor(value);
 #else
+	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+		|| Z_TYPE_P(value) != IS_DOUBLE) {
 		zval_ptr_dtor(&value);
 #endif
 		goto err_cleanup;
