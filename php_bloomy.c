@@ -40,8 +40,6 @@ typedef struct {
 	zend_object zo;
 } php_bloom_t;
 
-static zend_object_handlers bloom_object_handlers;
-
 #else
 typedef struct {
 	zend_object zo;
@@ -50,6 +48,7 @@ typedef struct {
 
 #endif
 
+static zend_object_handlers bloom_object_handlers;
 static zend_class_entry *bloom_ce = NULL;
 static const double DEFAULT_ERROR_RATE = 0.01;
 
