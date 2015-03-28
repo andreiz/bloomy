@@ -21,34 +21,34 @@
 
 #include "ext/standard/php_lcg.h"
 #include "ext/standard/php_rand.h"
+#ifdef ZEND_ENGINE_3
+#include "ext/standard/php_smart_string.h"
+#else
 #include "ext/standard/php_smart_str.h"
+#endif
 #include "ext/standard/php_var.h"
 
-/****************************************
-  Helper macros
-****************************************/
-
-#define BLOOM_METHOD_INIT_VARS             \
-    zval*             object  = getThis(); \
-    php_bloom_t*      obj     = NULL;      \
-
-#define BLOOM_METHOD_FETCH_OBJECT                                             \
-    obj = (php_bloom_t *) zend_object_store_get_object( object TSRMLS_CC );   \
-	if (!obj->bloom) {	\
-		php_error_docref(NULL TSRMLS_CC, E_WARNING, "BloomFilter constructor was not called");	\
-		return;	\
-	}
 
 
 /****************************************
   Structures and definitions
 ****************************************/
 
+#ifdef ZEND_ENGINE_3
+typedef struct {
+	bloom_t *bloom;
+	zend_object zo;
+} php_bloom_t;
+
+static zend_object_handlers bloom_object_handlers;
+
+#else
 typedef struct {
 	zend_object zo;
-
 	bloom_t *bloom;
 } php_bloom_t;
+
+#endif
 
 static zend_class_entry *bloom_ce = NULL;
 static const double DEFAULT_ERROR_RATE = 0.01;
@@ -59,6 +59,49 @@ static const double DEFAULT_ERROR_RATE = 0.01;
 ****************************************/
 
 static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC);
+
+
+
+#ifdef ZEND_ENGINE_3 
+static inline php_bloom_t *php_bloom_fetch_object(zend_object *obj) {
+	return (php_bloom_t *)((char*)(obj) - XtOffsetOf(php_bloom_t, zo));
+}
+#define Z_BLOOM_P(zv) php_bloom_fetch_object(Z_OBJ_P((zv)))
+#else 
+#define php_bloom_fetch_object(object) ((php_bloom_t *)object)
+#define Z_BLOOM_P(zv) (php_bloom_t *)zend_object_store_get_object(zv TSRMLS_CC)
+#endif
+
+
+
+/****************************************
+  Helper macros
+****************************************/
+
+#define BLOOM_METHOD_INIT_VARS             \
+    zval*             object  = getThis(); \
+    php_bloom_t*      obj     = NULL;      \
+
+#define BLOOM_METHOD_FETCH_OBJECT                                             \
+	obj = Z_BLOOM_P(object);   \
+	if (!obj->bloom) {	\
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "BloomFilter constructor was not called");	\
+		return;	\
+	}
+
+
+#ifdef ZEND_ENGINE_3
+	#define BLOOM_LEN_TYPE size_t
+#else
+	#define BLOOM_LEN_TYPE int
+#endif
+
+#ifdef ZEND_ENGINE_3
+	#define BLOOM_ZEND_OBJECT zend_object
+#else 
+	#define BLOOM_ZEND_OBJECT php_bloom_t
+#endif
+
 
 
 /****************************************
@@ -95,11 +138,13 @@ static PHP_METHOD(BloomFilter, __construct)
 	}
 	srand(seed);
 
-	obj = (php_bloom_t *) zend_object_store_get_object(object TSRMLS_CC);
+	obj = Z_BLOOM_P(object);
 
 	obj->bloom = (bloom_t *) emalloc(sizeof(bloom_t));
 	status = bloom_init(obj->bloom, capacity, error_rate);
+
 	if (status != BLOOM_SUCCESS) {
+	    //need to throw exception
 		ZVAL_NULL(object);
 		php_error_docref(NULL TSRMLS_CC, E_WARNING, "could not create filter");
 		return;
@@ -113,7 +158,7 @@ static PHP_METHOD(BloomFilter, __construct)
 static PHP_METHOD(BloomFilter, add)
 {
 	char *data = NULL;
-	int   data_len;
+	BLOOM_LEN_TYPE   data_len;
 	BLOOM_METHOD_INIT_VARS;
 	bloom_return status;
 
@@ -138,7 +183,7 @@ static PHP_METHOD(BloomFilter, add)
 static PHP_METHOD(BloomFilter, has)
 {
 	char *data = NULL;
-	int   data_len;
+	BLOOM_LEN_TYPE   data_len;
 	BLOOM_METHOD_INIT_VARS;
 	bloom_return status;
 
@@ -193,22 +238,41 @@ static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC)
 	}
 }
 
-static void php_bloom_free_storage(php_bloom_t *obj TSRMLS_DC)
+//static void php_bloom_free_storage(php_bloom_t *obj TSRMLS_DC)
+static void php_bloom_free_storage(BLOOM_ZEND_OBJECT *object TSRMLS_DC)
 {
+
+	php_bloom_t *obj = php_bloom_fetch_object(object);
+
 	zend_object_std_dtor(&obj->zo TSRMLS_CC);
 
 	php_bloom_destroy(obj TSRMLS_CC);
+
+#ifndef ZEND_ENGINE_3
 	efree(obj);
+#endif
 }
 
+#ifdef ZEND_ENGINE_3
+zend_object *php_bloom_new(zend_class_entry *ce)
+#else
 zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
+#endif
 {
-    zend_object_value retval;
     php_bloom_t *obj;
     zval *tmp;
 
-    obj = (php_bloom_t *) emalloc(sizeof(*obj));
-	memset(obj, 0, sizeof(*obj));
+#ifdef ZEND_ENGINE_3
+	obj = ecalloc(1,
+		sizeof(php_bloom_t) +
+		sizeof(zval) * (ce->default_properties_count - 1));
+#else
+	zend_object_value retval;
+
+	obj = (php_bloom_t *) emalloc(sizeof(*obj));
+    memset(obj, 0, sizeof(*obj));
+#endif
+    
 	zend_object_std_init(&obj->zo, ce TSRMLS_CC);
 #if PHP_VERSION_ID < 50399
     zend_hash_copy(obj->zo.properties, &ce->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
@@ -216,21 +280,39 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
     object_properties_init(&(obj->zo), ce);
 #endif
 
-    retval.handle = zend_objects_store_put(obj, (zend_objects_store_dtor_t)zend_objects_destroy_object, (zend_objects_free_object_storage_t)php_bloom_free_storage, NULL TSRMLS_CC);
-    retval.handlers = zend_get_std_object_handlers();
-
-    return retval;
+#ifdef ZEND_ENGINE_3
+	obj->zo.handlers = &bloom_object_handlers;
+	return &obj->zo;
+#else
+	retval.handle = zend_objects_store_put(obj, (zend_objects_store_dtor_t)zend_objects_destroy_object, (zend_objects_free_object_storage_t)php_bloom_free_storage, NULL TSRMLS_CC);
+	retval.handlers = zend_get_std_object_handlers();
+	return retval;
+#endif
+    
 }
 /* }}} */
 
+
+//zend_uint
+
 /* {{{ internal API functions */
+#ifdef ZEND_ENGINE_3
+int php_bloom_serialize(zval *object, unsigned char **buffer, size_t *buf_len,
+						zend_serialize_data *data TSRMLS_DC )
+#else 
 int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len,
-						zend_serialize_data *data TSRMLS_DC)
+						zend_serialize_data *data TSRMLS_DC )
+#endif
 {
-	zval value, *value_p = &value;
+	zval value;
+#ifndef ZEND_ENGINE_3
+	zval *value_p = &value;
+#endif
+
 	smart_str buf = { 0 };
+
 	php_serialize_data_t *var_hash = (php_serialize_data_t *)data;
-	php_bloom_t *obj = (php_bloom_t *) zend_object_store_get_object(object TSRMLS_CC);
+	php_bloom_t *obj = Z_BLOOM_P(object);
 
 	smart_str_appendl(&buf, "p:", 2);
 	smart_str_append_unsigned(&buf, obj->bloom->spec.filter_size);
@@ -253,14 +335,32 @@ int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len
 
 	INIT_PZVAL(&value);
 	ZVAL_DOUBLE(&value, obj->bloom->max_error_rate);
+#ifdef ZEND_ENGINE_3
+	php_var_serialize(&buf, &value, var_hash TSRMLS_CC);
+#else
 	php_var_serialize(&buf, &value_p, var_hash TSRMLS_CC);
+#endif
 
+#ifdef ZEND_ENGINE_3
+	ZVAL_STRINGL(&value, (char*)obj->bloom->filter, obj->bloom->spec.size_bytes);
+#else
 	ZVAL_STRINGL(&value, (char*)obj->bloom->filter, obj->bloom->spec.size_bytes, 0);
+#endif
+#ifdef ZEND_ENGINE_3
+	php_var_serialize(&buf, &value, var_hash TSRMLS_CC);
+#else
 	php_var_serialize(&buf, &value_p, var_hash TSRMLS_CC);
+#endif
 
+#ifdef ZEND_ENGINE_3
+	*buffer = (unsigned char *) estrndup(buf.s->val, buf.s->len);
+	*buf_len = buf.s->len;
+	zend_string_release(buf.s);
+#else
 	*buffer = (unsigned char*)estrndup(buf.c, buf.len);
 	*buf_len = buf.len;
 	efree(buf.c);
+#endif
 
 	#if PHP_VERSION_ID > 50399
 		PHP_VAR_SERIALIZE_DESTROY(*var_hash);
@@ -269,8 +369,13 @@ int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len
 	return SUCCESS;
 }
 
+#ifdef ZEND_ENGINE_3
+int php_bloom_unserialize(zval *object, zend_class_entry *ce, const unsigned char *buf,
+						  size_t buf_len, zend_unserialize_data *data)
+#else
 int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned char *buf,
 						  zend_uint buf_len, zend_unserialize_data *data TSRMLS_DC)
+#endif
 {
 #define PARSE_NEXT_NUM() \
 	num = (size_t)strtol((const char *)p, &e, 10); \
@@ -286,8 +391,13 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 	php_bloom_t *obj;
 	php_unserialize_data_t *var_hash = (php_unserialize_data_t *)data;
 
+#ifdef ZEND_ENGINE_3
+	object_init_ex(object, ce);
+	obj = Z_BLOOM_P(object);
+#else
 	object_init_ex(*object, ce);
-	obj = (php_bloom_t *) zend_object_store_get_object(*object TSRMLS_CC);
+	obj = Z_BLOOM_P(*object);
+#endif
 
 	p = buf;
 	buf_end = buf + buf_len;
@@ -323,9 +433,17 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 
 	ALLOC_INIT_ZVAL(value);
 
+#ifdef ZEND_ENGINE_3
+	if (!php_var_unserialize(value, &p, buf_end, var_hash TSRMLS_CC)
+#else
 	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+#endif
 			|| Z_TYPE_P(value) != IS_DOUBLE) {
+#ifdef ZEND_ENGINE_3
+		zval_ptr_dtor(value);
+#else
 		zval_ptr_dtor(&value);
+#endif
 		goto err_cleanup;
 	}
 
@@ -336,10 +454,18 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 	}
 
 	++p;
+#ifdef ZEND_ENGINE_3
+	if (!php_var_unserialize(value, &p, buf_end, var_hash TSRMLS_CC)
+#else
 	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+#endif
 			|| Z_TYPE_P(value) != IS_STRING
 			|| Z_STRLEN_P(value) != obj->bloom->spec.size_bytes) {
+#ifdef ZEND_ENGINE_3
+		zval_ptr_dtor(value);
+#else
 		zval_ptr_dtor(&value);
+#endif
 		goto err_cleanup;
 	}
 
@@ -355,7 +481,11 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 
 err_cleanup:
 	if (value) {
+#ifdef ZEND_ENGINE_3
+		zval_ptr_dtor(value);
+#else
 		zval_ptr_dtor(&value);
+#endif
 	}
 
 	return FAILURE;
@@ -418,6 +548,13 @@ PHP_MINIT_FUNCTION(bloomy)
 	bloom_ce->create_object = php_bloom_new;
 	bloom_ce->serialize     = php_bloom_serialize;
 	bloom_ce->unserialize   = php_bloom_unserialize;
+
+	memcpy(&bloom_object_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+
+#ifdef ZEND_ENGINE_3
+	bloom_object_handlers.offset = XtOffsetOf(php_bloom_t, zo);
+	bloom_object_handlers.free_obj = php_bloom_free_storage;
+#endif
 
 	return SUCCESS;
 }
