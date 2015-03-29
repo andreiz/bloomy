@@ -290,8 +290,6 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
 /* }}} */
 
 
-//zend_uint
-
 /* {{{ internal API functions */
 #ifdef ZEND_ENGINE_3
 int php_bloom_serialize(zval *object, unsigned char **buffer, size_t *buf_len,
