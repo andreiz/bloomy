@@ -61,7 +61,8 @@ http://pear.php.net/dtd/package-2.0.xsd">
     <file name="001.phpt" role="test" />
     <file name="add.phpt" role="test" />
     <file name="construct.phpt" role="test" />
-    <file name="has.phpt" role="test" />         
+    <file name="has.phpt" role="test" />
+    <file name="unserialize_integer_overflow.phpt" role="test" />
    </dir>
   </dir>
  </contents>
