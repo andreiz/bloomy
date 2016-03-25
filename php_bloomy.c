@@ -22,7 +22,7 @@
 #include "ext/standard/php_lcg.h"
 #include "ext/standard/php_rand.h"
 #ifdef ZEND_ENGINE_3
-#include "ext/standard/php_smart_string.h"
+#include "Zend/zend_smart_str.h"
 #else
 #include "ext/standard/php_smart_str.h"
 #endif
@@ -59,12 +59,12 @@ static const double DEFAULT_ERROR_RATE = 0.01;
 
 static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC);
 
-#ifdef ZEND_ENGINE_3 
+#ifdef ZEND_ENGINE_3
 static inline php_bloom_t *php_bloom_fetch_object(zend_object *obj) {
 	return (php_bloom_t *)((char*)(obj) - XtOffsetOf(php_bloom_t, zo));
 }
 #define Z_BLOOM_P(zv) php_bloom_fetch_object(Z_OBJ_P((zv)))
-#else 
+#else
 #define php_bloom_fetch_object(object) ((php_bloom_t *)object)
 #define Z_BLOOM_P(zv) (php_bloom_t *)zend_object_store_get_object(zv TSRMLS_CC)
 #endif
@@ -94,7 +94,7 @@ static inline php_bloom_t *php_bloom_fetch_object(zend_object *obj) {
 
 #ifdef ZEND_ENGINE_3
 	#define BLOOM_ZEND_OBJECT zend_object
-#else 
+#else
 	#define BLOOM_ZEND_OBJECT php_bloom_t
 #endif
 
@@ -237,7 +237,7 @@ static void php_bloom_destroy(php_bloom_t *obj TSRMLS_DC)
 //static void php_bloom_free_storage(php_bloom_t *obj TSRMLS_DC)
 #ifdef ZEND_ENGINE_3
 	static void php_bloom_free_storage(zend_object *object TSRMLS_DC)
-#else 
+#else
 static void php_bloom_free_storage(php_bloom_t *object TSRMLS_DC)
 #endif
 {
@@ -269,7 +269,7 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
 	obj = (php_bloom_t *) emalloc(sizeof(*obj));
     memset(obj, 0, sizeof(*obj));
 #endif
-    
+
 	zend_object_std_init(&obj->zo, ce TSRMLS_CC);
 #if PHP_VERSION_ID < 50399
     zend_hash_copy(obj->zo.properties, &ce->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
@@ -285,7 +285,7 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
 	retval.handlers = zend_get_std_object_handlers();
 	return retval;
 #endif
-    
+
 }
 /* }}} */
 
@@ -294,7 +294,7 @@ zend_object_value php_bloom_new(zend_class_entry *ce TSRMLS_DC)
 #ifdef ZEND_ENGINE_3
 int php_bloom_serialize(zval *object, unsigned char **buffer, size_t *buf_len,
 						zend_serialize_data *data TSRMLS_DC )
-#else 
+#else
 int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len,
 						zend_serialize_data *data TSRMLS_DC )
 #endif
@@ -328,7 +328,9 @@ int php_bloom_serialize(zval *object, unsigned char **buffer, zend_uint *buf_len
 		PHP_VAR_SERIALIZE_INIT(*var_hash);
 	#endif
 
+#ifndef ZEND_ENGINE_3
 	INIT_PZVAL(&value);
+#endif
 	ZVAL_DOUBLE(&value, obj->bloom->max_error_rate);
 #ifdef ZEND_ENGINE_3
 	php_var_serialize(&buf, &value, var_hash TSRMLS_CC);
@@ -375,7 +377,11 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 	const unsigned char *p, *buf_end;
 	char *e;
 	long num;
+#ifdef ZEND_ENGINE_3
+	zval value;
+#else
 	zval *value = NULL;
+#endif
 	php_bloom_t *obj;
 	php_unserialize_data_t *var_hash = (php_unserialize_data_t *)data;
 
@@ -419,13 +425,11 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 	PARSE_NEXT_NUM();
 	obj->bloom->salt2 = (size_t)num;
 
-	ALLOC_INIT_ZVAL(value);
-
 #ifdef ZEND_ENGINE_3
-	if (!php_var_unserialize(value, &p, buf_end, var_hash TSRMLS_CC)
-		|| Z_TYPE_P(value) != IS_DOUBLE) {
-		zval_ptr_dtor(value);
+	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+		|| Z_TYPE(value) != IS_DOUBLE) {
 #else
+	ALLOC_INIT_ZVAL(value);
 	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
 		|| Z_TYPE_P(value) != IS_DOUBLE) {
 		zval_ptr_dtor(&value);
@@ -434,22 +438,24 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 	}
 
 	--p; /* for ':' */
+#ifdef ZEND_ENGINE_3
+	obj->bloom->max_error_rate = Z_DVAL(value);
+#else
 	obj->bloom->max_error_rate = Z_DVAL_P(value);
+#endif
 	if (*p != ';') {
 		goto err_cleanup;
 	}
 
 	++p;
 #ifdef ZEND_ENGINE_3
-	if (!php_var_unserialize(value, &p, buf_end, var_hash TSRMLS_CC)
+	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
+			|| Z_TYPE(value) != IS_STRING
+			|| Z_STRLEN(value) != obj->bloom->spec.size_bytes) {
 #else
 	if (!php_var_unserialize(&value, &p, buf_end, var_hash TSRMLS_CC)
-#endif
 			|| Z_TYPE_P(value) != IS_STRING
 			|| Z_STRLEN_P(value) != obj->bloom->spec.size_bytes) {
-#ifdef ZEND_ENGINE_3
-		zval_ptr_dtor(value);
-#else
 		zval_ptr_dtor(&value);
 #endif
 		goto err_cleanup;
@@ -460,19 +466,21 @@ int php_bloom_unserialize(zval **object, zend_class_entry *ce, const unsigned ch
 	 * unserialized string and simply free the zval container instead of destroying it
 	 * with zval_ptr_dtor().
 	 */
+#ifdef ZEND_ENGINE_3
+	obj->bloom->filter = (uint8_t *)Z_STRVAL(value);
+#else
 	obj->bloom->filter = (uint8_t *)Z_STRVAL_P(value);
 	FREE_ZVAL(value);
+#endif
 
 	return SUCCESS;
 
 err_cleanup:
+#ifndef ZEND_ENGINE_3
 	if (value) {
-#ifdef ZEND_ENGINE_3
-		zval_ptr_dtor(value);
-#else
 		zval_ptr_dtor(&value);
-#endif
 	}
+#endif
 
 	return FAILURE;
 #undef PARSE_NEXT_NUM
